@@ -3,6 +3,9 @@ using Mono.Cecil;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using Unity.VisualScripting;
+using UnityEditor.Search;
 using UnityEngine;
 using UnityEngine.Experimental.AI;
 
@@ -27,6 +30,7 @@ public class MapGen : MonoBehaviour
     private float Rsize;
     private Queue<int> Rqueue;
     private List<Room> RGen;
+    private List<int> bRid;
 
     [Header("Sprites")]
     [SerializeField] public Sprite boss;
@@ -34,9 +38,43 @@ public class MapGen : MonoBehaviour
     [SerializeField] public Sprite item;
     [SerializeField] public Sprite hidden;
 
+    [Header("Rooms")]
+    [SerializeField] public Sprite LR;
+    [SerializeField] public Sprite VR;
+    [SerializeField] public Sprite HR;
+    [SerializeField] public Sprite LsR;
 
+    public static MapGen Instance;
 
+    private static readonly List<int[]> roomShapes = new()
+    {
+        new int[]{-1 },
+        new int[]{1 },
 
+        new int[]{10 },
+        new int[]{-10 },
+
+        new int[] {1,10 },
+        new int[] {1,11 },
+        new int[] {10,11 },
+
+        new int[] {9,10 },
+        new int[] {-1, 9},
+        new int[] {-1,10 },
+
+        new int[] {1, -10 },
+        new int[] {1, -9 },
+        new int[] {-9, -10 },
+
+        new int[] {-1, -10},
+        new int[] {-1, -11 },
+        new int[]{-10,-11 },
+
+        new int[] { 1,10,11 },
+        new int[] {1,-9,-10 },
+        new int[] {-1, 9, 10},
+        new int[] {-1, -10, -11}
+    };
 
 
 
@@ -73,14 +111,16 @@ public class MapGen : MonoBehaviour
         tileCount = default;
         Rqueue = new Queue<int>();  
         lastR = new List<int>();
+        bRid = new List<int>();
 
         visitR(45);
         // center of the matrix I want to test 50 and different numbers 
-
+        ClearLastR();
         GenDungeon();
-
+        
 
     }
+   
     void GenDungeon()
     {
         while(Rqueue.Count > 0)
@@ -104,7 +144,12 @@ public class MapGen : MonoBehaviour
             MakeDungeon();
             return;
         }
+        ClearLastR();
         makeSR();
+    }
+    void ClearLastR()
+    {
+        lastR.RemoveAll(item => bRid.Contains(item) || FindAdjNum(item) > 1);
     }
 
     void makeSR()
@@ -210,6 +255,17 @@ public class MapGen : MonoBehaviour
         if (Random.value < 0.5f)
             return false;
 
+        if(Random.value <0.3f && index != 45)
+        {
+            foreach(var shape in roomShapes.OrderBy(_ => Random.value))
+            {
+                if (RoomPlace(index, shape))
+                {
+                    return true;
+                }
+            }
+        }
+
         Rqueue.Enqueue(index);
         tileLayout[index] = 1;
         tileCount++;
@@ -228,9 +284,96 @@ public class MapGen : MonoBehaviour
         newRoom.value = 1;
         newRoom.index = index;
 
+        
         RGen.Add(newRoom);
+        
     }
 
+    private bool RoomPlace(int origin, int[] offests)
+    {
+        List<int> CRid = new List<int>()
+        {
+            origin
+        };
 
+        foreach(var offset in offests)
+        {
+            int CheckCid = origin + offset;
+
+            if(CheckCid -10<0|| CheckCid + 10 >= tileLayout.Length)
+            {
+                return false;
+            }
+            if (tileLayout[CheckCid] != 0)
+            {
+                return false;
+            }
+            if(CheckCid == origin) continue;
+            if (CheckCid % 10 == 0) continue;
+
+            CRid.Add(CheckCid);
+        }
+        if (CRid.Count == 1)
+            return false;
+
+        foreach(int index in CRid)
+        {
+            tileLayout[index] = 1;  
+            tileCount++;    
+            Rqueue.Enqueue(index);
+
+            bRid.Add(index);
+        }
+        makeLR(CRid);
+
+        return true;
+    }
+
+    private void makeLR(List<int> LRids)
+    {
+        Room newRoom = null;
+
+        int combinedX = 0;
+        int combinedY = 0;
+        float offset = Rsize / 2f;
+
+        for (int i = 0; i < LRids.Count; i++)
+        {
+            int x = LRids[i] % 10;
+            int y = LRids[i] / 10;
+            combinedX += x;
+            combinedY += y;
+        }
+        if(LRids.Count == 4)
+        {
+            Vector2 pos = new Vector2(combinedX/4*Rsize+offset,-combinedY/4*Rsize-offset);
+            newRoom = Instantiate(setR, pos, Quaternion.identity);
+            newRoom.makeRicons(LR);
+        }
+        if(LRids.Count == 3)
+        {
+            Vector2 pos = new Vector2(combinedX / 3 * Rsize + offset, -combinedY / 3 * Rsize - offset);
+            newRoom = Instantiate(setR, pos, Quaternion.identity);
+            newRoom.makeRicons(LsR);
+            newRoom.RotateRoom(LRids);
+        }
+        if (LRids.Count == 2)
+        {
+            if (LRids[0] + 10 == LRids[1] || LRids[0] - 10 == LRids[1])
+            {
+                Vector2 pos = new Vector2(combinedX / 2 * Rsize, -combinedY / 2 * Rsize - offset);
+                newRoom = Instantiate(setR, pos, Quaternion.identity);
+                newRoom.makeRicons(VR);
+
+            }
+            else if (LRids[0] + 1 == LRids[1] || LRids[0] - 1 == LRids[1])
+            {
+                Vector2 pos = new Vector2(combinedX / 2 * Rsize + offset, -combinedY / 2 * Rsize);
+                newRoom = Instantiate(setR, pos, Quaternion.identity);
+                newRoom.makeRicons(HR);
+            }
+        }
+        RGen.Add(newRoom);
+    }
 
 }

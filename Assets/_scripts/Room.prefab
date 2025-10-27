@@ -197,3 +197,4 @@ MonoBehaviour:
   index: 0
   value: 0
   spriteR: {fileID: 6358837401260354553}
+  roomRenderer: {fileID: 6146439998898618287}
